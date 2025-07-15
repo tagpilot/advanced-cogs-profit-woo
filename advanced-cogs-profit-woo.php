@@ -9,153 +9,209 @@
  * WC requires at least: 5.0
  */
 
+// https://developer.woocommerce.com/2025/05/21/cost-of-goods-soldcogs-is-ready-to-blossom-out-of-beta-this-summer/
+
 defined('ABSPATH') || exit;
 
 class Advanced_Cogs_Profit_Woo {
 
     protected $slug;
     protected $slug_snake_case;
-    protected $wp_settings_util;
     protected $cache;
+    protected $settings = array(
+        array(
+            'name' => 'Advanced Costs',
+            'type' => 'title',
+            'desc' => 'In addition to costs specify order level costs below.',
+        ),
+        array(
+            'name'     => 'Payment processing',
+            'desc' => 'Specify the payment processing fee in percents.',
+            'id'       => 'advanced_cogs_profit_woo_payment_processing_cost',
+            'type'     => 'text',
+        ),
+        array(
+            'name'     => 'Fulfilment (percentage)',
+            'desc'     => 'Specify the fulfilment costs in percents.',
+            'id'       => 'advanced_cogs_profit_woo_fulfilment_cost',
+            'type'     => 'text',
+        ),
+        array(
+            'type' => 'sectionend',
+        ),
+    );
 
-    public function __construct($slug, $wp_settings_util) {
+    public function __construct($slug) {
         $this->slug = $slug;
         $this->slug_snake_case = str_replace('-', '_', $slug);
-        $this->wp_settings_util = $wp_settings_util;
 
         $this->init();
     }
 
     public function init() {
         // Add menu items
-        add_action('admin_menu', [$this, 'add_admin_menu']);
-        add_action('admin_init', [$this, 'settings']);
+        add_filter( 'woocommerce_get_sections_advanced', [$this, 'add_section_tag'] );
+        add_filter( 'woocommerce_get_settings_advanced', [$this, 'add_settings'], 10, 2 );
+        add_action( 'woocommerce_settings_advanced', [$this, 'add_section_content'] );
+        add_action( 'woocommerce_settings_save_advanced', [$this, 'save_settings'] );
 
-        // Add product meta box
-        add_action('add_meta_boxes', [$this, 'add_product_meta_box']);
-        add_action('save_post_product', [$this, 'save_product_cost']);
+        add_filter( 'woocommerce_product_data_tabs', [$this, 'add_product_data_tab'] );
+        add_action( 'woocommerce_product_data_panels', [$this, 'add_product_data_panel'] );
 
         // Add order meta box
         add_action('add_meta_boxes', [$this, 'add_order_meta_box']);
     }
 
-    public function settings() {
 
-        $this->wp_settings_util->add_settings_section('settings', 'product_cost', 'Product Cost', 'Define product cost');
-        $this->wp_settings_util->add_settings_field('product_cost', 'product_cost_metadata', 'Product Cost Metadata', 'input');
 
-        $this->wp_settings_util->add_settings_field(
-            'product_cost',
-            'product_cost_rules',
-            'Product Cost Rules',
-            [$this, 'array_field'],
-            '',
-            [
-                'fields_config' => [
-                    'parameter' => [
-                        'title' => 'Rule parameter',
-                        'callback' => 'select_field',
-                        'options' => [
-                            'shipping_class' => 'Shipping Class'
-                        ]
-                    ],
-                    'operator' => [
-                        'title' => 'Operator',
-                        'callback' => 'select_field',
-                        'options' => [
-                            'equals' => 'equals'
-                        ]
-                    ],
-                    'value' => [
-                        'title' => 'Rule value',
-                        'callback' => 'input_field',
-                        'type' => 'text',
-                        'placeholder' => '',
-                    ],
-                    'percentage' => [
-                        'title' => 'Percentage Cost',
-                        'callback' => 'input_field',
-                        'type' => 'number',
-                        'placeholder' => '',
-                    ],
-                    'absolute' => [
-                        'title' => 'Absolute Cost',
-                        'callback' => 'input_field',
-                        'type' => 'number',
-                        'placeholder' => '',
-                    ],
-                ]
-            ]
-        );
-
-        $this->wp_settings_util->add_settings_section('settings', 'fulfillment_cost', 'Fulfillment Cost', 'Define fulfillment cost');
-        $this->wp_settings_util->add_settings_field('fulfillment_cost', 'fulfillment_cost_per_order', 'Fulfillment Cost per order', 'input', '', ['type' => 'number']);
-
-        $this->wp_settings_util->add_settings_section('settings', 'payment_processing_cost', 'Payment Processing Cost', 'Define fulfillment cost');
-
-        $this->wp_settings_util->add_settings_field('payment_processing_cost', 'payment_processing_cost', 'Payment Processing Cost', 'input', '', ['type' => 'number']);
+    public function add_section_tag( $sections ) {
+        $sections[ $this->slug ] = 'COGS & Profit';
+        return $sections;
     }
 
-    public function add_admin_menu() {
-        $this->wp_settings_util->add_tab('reports', 'Reports', true, false, [$this, 'render_reports_page']);
-        $this->wp_settings_util->add_tab('settings', 'Settings');
-        $this->wp_settings_util->add_submenu_page( 'woocommerce', 'Simple Profit', 'Simple Profit');
+
+
+    public function add_settings( $settings, $current_section ) {
+        // we need the fields only on our custom section
+        if( $this->slug !== $current_section ) {
+            return $settings;
+        }
+
+        return $this->settings;
     }
 
-    public function array_field( $args ) {
-        $name = $args['label_for'];
-        $fields_config = $args['fields_config'];
 
-        $value = $args['value'] ?? get_option( $args['label_for'] );
-
-        if (false === is_array($value)) {
-            $value = [];
+    function add_section_content() {
+        if( empty( $_GET[ 'section' ] ) || $this->slug !== $_GET[ 'section' ] ) {
+            return;
         }
+        $cogs_rules_raw = get_option( $this->slug_snake_case . '_product_cogs_rules');
 
-        if (count($value) === 0) {
-            $value[] = array_fill_keys(array_keys($fields_config), '');
-        }
+        $cogs_rules = json_decode($cogs_rules_raw, true) ?: [];
 
-        echo '<table class="widefat">';
-        echo '<thead>';
-        echo '<tr>';
-        foreach ($fields_config as $index => $field) {
-            echo '<th>';
-            echo $field['title'];
-            echo '</th>';
-        }
-        echo '<th>';
         ?>
-        <a href="#" onclick="arguments[0].preventDefault(); var table = this.parentNode.parentNode.parentNode.parentNode; jQuery('tbody tr:last-child', table).clone().appendTo(jQuery('tbody', table)); jQuery('tbody tr:last-child :input', table).not(':button, :submit, :reset, :hidden').val('').prop('checked', false).prop('selected', false).each(function(i, inp) { var name = inp.name; var match = name.match(/\[(\d*)\]/i); jQuery(inp).attr('name', name.replace(match[0], '[' + (parseInt(match[1]) + 1) + ']')) });">Add Row</a>
+        <h2>COGS rules</h2>
+        <div id="advanced_page_options-description"><p>Define COGS rules that will apply to products based on condition.</p></div>
+        <table id="advanced-cogs-profit-woo-table" class="wc_input_table widefat">
+            <thead>
+                <tr>
+                    <th>Product Taxonomy&nbsp;<span class="woocommerce-help-tip" tabindex="0" aria-label=""></span></th>
+                    <th>Operator&nbsp;<span class="woocommerce-help-tip" tabindex="0" aria-label="Postcode for this rule. Semi-colon (;) separate multiple values. Leave blank to apply to all areas. Wildcards (*) and ranges for numeric postcodes (e.g. 12345...12350) can also be used."></span></th>
+                    <th>Matching value&nbsp;<span class="woocommerce-help-tip" tabindex="0" aria-label="Cities for this rule. Semi-colon (;) separate multiple values. Leave blank to apply to all cities."></span></th>
+                    <th>COGS value&nbsp;%&nbsp;<span class="woocommerce-help-tip" tabindex="0" aria-label="Enter a tax rate (percentage) to 4 decimal places."></span></th>
+                    <th>Enabled&nbsp;<span class="woocommerce-help-tip" tabindex="0" aria-label="Enter a tax rate (percentage) to 4 decimal places."></
+                        span></th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tfoot>
+                <tr>
+                    <th colspan="9">
+                        <a id="advanced-cogs-profit-woo-insert" href="#" class="button plus insert">Insert row</a>
+                    </th>
+                </tr>
+            </tfoot>
+            <tbody>
+                <?php foreach ($cogs_rules as $index => $rule): ?>
+                <?php $sel = fn($nam, $val) => @$rule[$nam] === $val ? 'selected="selected"' : ''; ?>
+                <tr>
+                    <td style="vertical-align: middle;padding-left: 10px;">
+                        <select name="product_cogs_rules[<?php echo $index; ?>][parameter]" class="wc-enhanced-select enhanced" tabindex="-1" >
+                            <option value="category" <?php echo $sel('parameter', 'category'); ?>>Category</option>
+                            <option value="tag" <?php echo $sel('parameter', 'tag'); ?>>Tag</option>
+                            <option value="attribute" <?php echo $sel('parameter', 'attribute'); ?>>Attribute</option>
+                        </select>
+                    </td>
+
+                    <td style="vertical-align: middle;padding-left: 10px;">
+                        <select name="product_cogs_rules[<?php echo $index; ?>][operator]" class="wc-enhanced-select enhanced" tabindex="-1" >
+                            <option value="equals" <?php echo $sel('operator', 'equals'); ?>>equals</option>
+                            <option value="not_equals" <?php echo $sel('operator', 'not_equals'); ?>>doesn't equal</option>
+                            <option value="contains" <?php echo $sel('operator', 'contains'); ?>>contains</option>
+                            <option value="not_contains" <?php echo $sel('operator', 'not_contains'); ?>>doesn't contain</option>
+                        </select>
+                    </td>
+
+                    <td>
+                        <input type="text" value="<?php echo @$rule['matching_value']; ?>" placeholder="matching value" name="product_cogs_rules[<?php echo $index; ?>][matching_value]">
+                    </td>
+
+                    <td>
+                        <input type="text" value="<?php echo @$rule['cogs_percentage']; ?>" placeholder="%" name="product_cogs_rules[<?php echo $index; ?>][cogs_percentage]">
+                    </td>
+
+                    <td style="vertical-align: middle;padding-left: 10px;">
+                        <input type="hidden" name="product_cogs_rules[<?php echo $index; ?>][enabled]" value="0">
+                        <input type="checkbox" class="checkbox" name="product_cogs_rules[<?php echo $index; ?>][enabled]" value="1" <?php echo @$rule['enabled'] === "1" ? 'checked="checked"' : ''; ?>>
+                    </td>
+                    <td style="vertical-align: middle;padding-left: 10px;">
+                        <a href="#" class="button minus remove_tax_rates advanced-cogs-profit-woo-remove">Remove</a>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <script>
+            jQuery(function($) {
+                $("#advanced-cogs-profit-woo-insert").click(function(ev) {
+                    ev.preventDefault();
+                    var table = this.parentNode.parentNode.parentNode.parentNode;
+                    $('tbody tr:last-child', table).clone().appendTo($('tbody', table));
+                    $('tbody tr:last-child :input', table).not(':button, :submit, :reset, :hidden')
+                        .val('').prop('checked', false).prop('selected', false)
+                        .each(function(i, inp) {
+                            var name = inp.name;
+                            var match = name.match(/\[(\d*)\]/i);
+                            $(inp).attr('name', name.replace(match[0], '[' + (parseInt(match[1]) + 1) + ']'))
+                        });
+                });
+
+                $("#advanced-cogs-profit-woo-table").on( "click", ".advanced-cogs-profit-woo-remove", function(ev) {
+                    ev.preventDefault();
+                    this.parentNode.parentNode.remove();
+                });
+            });
+        </script>
+        <br class="clear">
         <?php
-        echo '</th>';
-        echo '</tr>';
-        echo '</thead>';
-        echo '<tbody>';
-        foreach ($value as $index => $rule) {
-            echo '<tr>';
-
-            foreach ($fields_config as $name => $field_config) {
-                $field_name = sprintf('%s[%d][%s]', $args['label_for'], $index, $name);
-                $value = $rule[$name];
-                // $field_config = $fields_config[$name] ?? null;
-
-                if (null === $field_config) {
-                    continue;
-                }
-                echo '<td style="vertical-align: top">';
-                $this->wp_settings_util->{$field_config['callback']}(array_merge($field_config, [
-                    'label_for' => $field_name,
-                    'value' => $value,
-                ]));
-                echo '</td>';
-            }
-            echo '<td><a href="#" onclick="arguments[0].preventDefault(); this.parentNode.parentNode.remove();">Remove</a></td>';
-            echo '</tr>';
-        }
-        echo '</tbody>';
-        echo '</table>';
     }
+
+    public function save_settings() {
+        if ($_REQUEST['section'] !== $this->slug) {
+            return;
+        }
+
+        update_option( $this->slug_snake_case . '_product_cogs_rules', json_encode($_REQUEST['product_cogs_rules']) );
+
+        WC_Admin_Settings::save_fields( $this->settings );
+
+    }
+
+
+    public function add_product_data_tab( $product_data_tabs ) {
+        $product_data_tabs[$this->slug] = array(
+            'label' => __( 'COGS Rules', $this->slug_snake_case ), // translatable
+            'target' => $this->slug_snake_case, // translatable
+        );
+        return $product_data_tabs;
+    }
+
+    public function add_product_data_panel() {
+        $product = wc_get_product( get_the_ID() );
+
+        ?>
+        <div id="<?php echo $this->slug_snake_case ?>" class="panel woocommerce_options_panel hidden">
+
+            <p class="form-field" style="">
+                <label for="_manage_stock">Calculated COGS</label><span class="description"><?php echo $this->get_cost_from_rules(get_the_ID()); ?></span>
+            </p>
+            <?php /*<p class="form-field" style="">
+                <label for="_manage_stock">Calculated COGS</label><span class="description"><?php echo $this->get_cost_from_rules(get_the_ID()); ?></span>
+            </p>*/ ?>
+        </div>
+        <?php
+    }
+
 
     public function render_reports_page() {
         $start_date = isset($_GET['start_date']) ? sanitize_text_field($_GET['start_date']) : date('Y-m-d', strtotime('-30 days'));
@@ -176,7 +232,7 @@ class Advanced_Cogs_Profit_Woo {
                 <p>Total Revenue: <?php echo wc_price($profit_data['revenue']); ?></p>
                 <p>Total Costs: <?php echo wc_price($profit_data['total_costs']); ?></p>
                 <p>Costs of products: <?php echo wc_price($profit_data['costs_product']); ?></p>
-                <p>Costs of fullfilment: <?php echo wc_price($profit_data['costs_fullfilment']); ?></p>
+                <p>Costs of fulfilment: <?php echo wc_price($profit_data['costs_fulfilment']); ?></p>
                 <p>Costs of discounts: <?php echo wc_price($profit_data['costs_discounts']); ?></p>
                 <p>Costs of shipping: <?php echo wc_price($profit_data['costs_shipping']); ?></p>
                 <p>Costs of payment processing: <?php echo wc_price($profit_data['costs_payment_processing']); ?></p>
@@ -187,43 +243,14 @@ class Advanced_Cogs_Profit_Woo {
         <?php
     }
 
-    public function add_product_meta_box() {
-        add_meta_box(
-            'simple_profit_product_cost',
-            'Product Cost',
-            [$this, 'render_product_meta_box'],
-            'product',
-            'normal',
-            'high'
-        );
-    }
-
-    public function render_product_meta_box($post) {
-        $cost = get_post_meta($post->ID, '_product_cost', true);
-        ?>
-        <div class="product-cost-fields">
-            <p>
-                <label>Product Cost:</label>
-                <input type="number" step="0.01" name="product_cost" value="<?php echo esc_attr($cost); ?>">
-            </p>
-        </div>
-        <?php
-    }
-
-    public function save_product_cost($post_id) {
-        if (isset($_POST['product_cost'])) {
-            update_post_meta($post_id, '_product_cost', sanitize_text_field($_POST['product_cost']));
-        }
-    }
 
     public function add_order_meta_box() {
         add_meta_box(
-            'simple_profit_order_details',
-            'Profit Details',
+            $this->slug_snake_case . '_order_details',
+            'COGS & Profit Details',
             [$this, 'render_order_meta_box'],
             'shop_order',
-            'normal',
-            'high'
+            'side'
         );
     }
 
@@ -233,20 +260,35 @@ class Advanced_Cogs_Profit_Woo {
 
         $profit_data = $this->calculate_order_profit($order);
         ?>
-        <div class="order-profit-details">
-            <p>
-                <strong>Total Revenue:</strong> <?php echo wc_price($profit_data['revenue']); ?>
-            </p>
-            <p>
-                <strong>Total Costs:</strong> <?php echo wc_price($profit_data['costs']); ?>
-            </p>
-            <p>
-                <strong>Net Profit:</strong> <?php echo wc_price($profit_data['profit']); ?>
-            </p>
-            <p>
-                <strong>Profit Margin:</strong> <?php echo number_format($profit_data['margin'], 2); ?>%
-            </p>
-        </div>
+
+            <h4 style="margin-bottom: .1em;">Total revenue<span class="woocommerce-help-tip" aria-label="This is the Customer Lifetime Value, or the total amount you have earned from this customer's orders."></span></h4>
+            <span><?php echo wc_price($profit_data['revenue']); ?></span>
+
+            <h4 style="margin-bottom: .1em;">Total costs<span class="woocommerce-help-tip" aria-label="This is the Customer Lifetime Value, or the total amount you have earned from this customer's orders."></span></h4>
+            <span><?php echo wc_price($profit_data['costs']); ?></span>
+
+            <h4 style="margin-bottom: .1em;">Net profit<span class="woocommerce-help-tip" aria-label="This is the Customer Lifetime Value, or the total amount you have earned from this customer's orders."></span></h4>
+            <span><?php echo wc_price($profit_data['profit']); ?></span>
+
+            <h4 style="margin-bottom: .1em;">Profit margin<span class="woocommerce-help-tip" aria-label="This is the Customer Lifetime Value, or the total amount you have earned from this customer's orders."></span></h4>
+            <span><?php echo number_format($profit_data['margin'], 2); ?>%</span>
+
+
+            <hr />
+            <h3>Details</h3>
+
+
+            <h4 style="margin-bottom: .1em;">Products COGS:</h4>
+            <span><?php echo wc_price($profit_data['costs_product']); ?></span>
+
+            <h4 style="margin-bottom: .1em;">Fulfilment costs:</h4>
+            <span><?php echo wc_price($profit_data['costs_fulfilment']); ?></span>
+
+            <h4 style="margin-bottom: .1em;">Payment processing costs:</h4>
+            <span><?php echo wc_price($profit_data['costs_payment_processing']); ?></span>
+
+            <h4 style="margin-bottom: .1em;">Shipping costs:</h4>
+            <span><?php echo wc_price($profit_data['costs_shipping']); ?></span>
         <?php
     }
 
@@ -269,9 +311,9 @@ class Advanced_Cogs_Profit_Woo {
             $costs_product += floatval($cost) * $item->get_quantity();
         }
 
-        // Add fulfillment costs
-        $fulfillment_costs = $this->calculate_fulfillment_costs($order);
-        $costs = (float) $shipping + (float) $costs_product + (float) $fulfillment_costs;
+        // Add fulfilment costs
+        $fulfilment_costs = $this->calculate_fulfilment_costs($order);
+        $costs = (float) $shipping + (float) $costs_product + (float) $fulfilment_costs;
 
         // Add payment processing costs
         $payment_costs = $this->calculate_payment_processing_costs($order);
@@ -284,9 +326,9 @@ class Advanced_Cogs_Profit_Woo {
             'revenue' => $revenue,
             'costs' => $costs,
             'costs_product' => $costs_product,
-            'costs_fullfilment' => $fulfillment_costs,
+            'costs_shipping' => $costs_shipping,
+            'costs_fulfilment' => $fulfilment_costs,
             'costs_payment_processing' => $payment_costs,
-            'costs_shipping' => $shipping,
             'costs_discounts' => $costs_discounts,
             'profit' => $profit,
             'margin' => $margin
@@ -306,7 +348,7 @@ class Advanced_Cogs_Profit_Woo {
         $total_revenue = 0;
         $total_costs = 0;
         $costs_product = 0;
-        $costs_fullfilment = 0;
+        $costs_fulfilment = 0;
         $costs_payment_processing = 0;
         $costs_discounts = 0;
         $order_count = count($orders);
@@ -316,7 +358,7 @@ class Advanced_Cogs_Profit_Woo {
             $total_revenue += $order_data['revenue'];
             $total_costs += $order_data['costs'];
             $costs_product += $order_data['costs_product'];
-            $costs_fullfilment += $order_data['costs_fullfilment'];
+            $costs_fulfilment += $order_data['costs_fulfilment'];
             $costs_shipping += $order_data['costs_shipping'];
             $costs_discounts += $order_data['costs_discounts'];
             $costs_payment_processing += $order_data['costs_payment_processing'];
@@ -328,7 +370,7 @@ class Advanced_Cogs_Profit_Woo {
         return [
             'revenue' => $total_revenue,
             'costs_product' => $costs_product,
-            'costs_fullfilment' => $costs_fullfilment,
+            'costs_fulfilment' => $costs_fulfilment,
             'costs_shipping' => $costs_shipping,
             'costs_payment_processing' => $costs_payment_processing,
             'costs_discounts' => $costs_discounts,
@@ -342,20 +384,34 @@ class Advanced_Cogs_Profit_Woo {
         if (isset($this->cache[$option_name])) {
             return $this->cache[$option_name];
         }
-        $option_value = $this->wp_settings_util->get_option($option_name);
+        $option_value = get_option($this->slug_snake_case . '_' . $option_name);
         $this->cache[$option_name] = $option_value;
         return $option_value;
     }
 
     private function get_cost_from_rules($product_id) {
-        $product_cost_rules = $this->get_cached_option('product_cost_rules');
+        $product_cogs_rules = json_decode($this->get_cached_option('product_cogs_rules'), true);
         $product = wc_get_product($product_id);
-        $shipping_class = $product->get_shipping_class();
+
+        if ($product->get_cogs_total_value() != 0) {
+            return $product->get_cogs_total_value();
+        }
+
+        $categories = array_map(fn($t) => $t->name, get_the_terms( $product_id, 'product_cat' ));
+
         $cost = 0;
-        foreach ($product_cost_rules as $rule) {
-            if ($rule['parameter'] === 'shipping_class') {
-                if ($shipping_class === $rule['value']) {
-                    $cost += $rule['absolute'];
+        foreach ($product_cogs_rules as $rule) {
+            if ($rule['enabled'] !== '1') {
+                continue;
+            }
+
+            if ($rule['parameter'] === 'category') {
+
+                if ($rule['operator'] === 'equals') {
+
+                    if (in_array($rule['matching_value'], $categories)) {
+                        $cost = $product->get_price_excluding_tax() * $rule['cogs_percentage'] / 100;
+                    }
                 }
             }
         }
@@ -363,11 +419,11 @@ class Advanced_Cogs_Profit_Woo {
         return $cost;
     }
 
-    private function calculate_fulfillment_costs($order) {
+    private function calculate_fulfilment_costs($order) {
         $cost = 0;
-        $fulfillment_settings = $this->get_cached_option('fulfillment_cost_per_order');
+        $fulfilment_settings = $this->get_cached_option('fulfilment_cost');
         foreach ($order->get_shipping_methods() as $method) {
-            $cost += $fulfillment_settings;
+            $cost += $fulfilment_settings;
         }
 
         return $cost;
@@ -380,341 +436,4 @@ class Advanced_Cogs_Profit_Woo {
     }
 }
 
-class WP_Settings_Util {
-
-    /** @var string */
-    protected $slug_snake_case;
-    /** @var string */
-    protected $slug;
-
-    /** @var array */
-    protected $tabs = [];
-    /** @var array */
-    protected $sections = [];
-
-    const WP_KSES_ALLOWED_HTML = [
-        'a' => [
-            'id' => [],
-            'href' => [],
-            'target' => [],
-            'class' => [],
-            'style' => [],
-            'data-target' => [],
-        ],
-        'input' => [
-            'type' => [],
-            'value' => [],
-            'style' => [],
-        ],
-        'br' => [],
-        'div' => [
-            'id' => [],
-            'style' => [],
-            'class' => [],
-        ],
-        'p' => [
-            'id' => [],
-            'style' => [],
-            'class' => [],
-        ],
-        'span' => [
-            'id' => [],
-            'style' => [],
-            'class' => [],
-            'data-section' => []
-        ],
-        'b' => [],
-        'h3' => [
-            'id' => [],
-            'style' => [],
-            'class' => [],
-        ],
-        'pre' => [
-            'style' => []
-        ],
-        'strong' => [],
-        'img' => [],
-        'script' => [],
-        'noscript' => [],
-        'iframe' => [
-            'src' => [],
-            'height' => [],
-            'width' => [],
-            'style' => [],
-        ],
-    ];
-
-    const WP_KSES_ALLOWED_PROTOCOLS = [
-        'http', 'https'
-    ];
-
-    public function __construct( string $slug ) {
-        $this->slug = $slug;
-        $this->slug_snake_case = str_replace('-', '_', $slug);
-    }
-
-    public function get_option( $option_name ) {
-        return get_option($this->slug_snake_case . '_' . $option_name);
-    }
-
-    public function delete_option( $option_name) {
-        return delete_option($this->slug_snake_case . '_' . $option_name);
-    }
-
-    public function update_option( $option_name, $option_value) {
-        return update_option($this->slug_snake_case . '_' . $option_name, $option_value);
-    }
-
-    public function register_setting( $setting_name ) {
-        return register_setting( $this->slug_snake_case, $this->slug_snake_case . '_' . $setting_name );
-    }
-
-    public function add_tab( $tabName, $tabTitle, $showSaveButton = true, $inactive = false, $callback = null) {
-        $this->tabs[$tabName] = [
-            'name' => $tabName,
-            'title' => $tabTitle,
-            'show_save_button' => $showSaveButton,
-            'inactive' => $inactive,
-            'callback' => $callback
-        ];
-    }
-
-    public function add_settings_section( $tab, $sectionName, $sectionTitle, $description, $extra = null): void {
-        $this->sections[$sectionName] = [
-            'name' => $sectionName,
-            'tab' => $tab
-        ];
-        $args = [
-            'before_section' => '',
-            'after_section' => '',
-        ];
-
-        $grid = isset($extra['grid']) ? $extra['grid'] : null;
-        $badge = isset($extra['badge']) ? $extra['badge'] : null;
-
-        if ( 'start' === $grid || 'single' === $grid ) {
-            $args['before_section'] = '<div class="metabox-holder"><div class="postbox-container" style="float: none; display: flex; flex-wrap:wrap;">';
-        }
-        if ( null !== $grid ) {
-            $args['before_section'] .= '<div style="margin-left: 4%; width: 45%" class="postbox"><div class="inside">';
-            $args['after_section'] = '</div></div>';
-        }
-
-        if ( 'end' === $grid || 'single' === $grid ) {
-            $args['after_section'] .= '</div></div><br />';
-        }
-
-        $title = __( $sectionTitle, $this->slug );
-        if ($badge) {
-            $title .= ' <code>' . strtoupper($badge) . '</code>';
-        }
-
-        add_settings_section(
-            $this->slug_snake_case . '_' . $sectionName,
-            $title,
-            static function( $args) use ( $description, $grid ) {
-                ?>
-              <p id="<?php echo esc_attr( $args['id'] ); ?>"><?php echo wp_kses($description, self::WP_KSES_ALLOWED_HTML, self::WP_KSES_ALLOWED_PROTOCOLS); ?></p>
-              <?php
-            },
-            $this->slug_snake_case . '_' . $tab,
-            $args
-        );
-    }
-
-    public function add_settings_field( $fieldSection, $fieldName, $fieldTitle, $fieldCallback, $fieldDescription = '', $extraAttrs = []) {
-        $attrs = array_merge([
-            'label_for'   => $this->slug_snake_case . '_' . $fieldName,
-            'description' => $fieldDescription,
-        ], $extraAttrs);
-        $section = $this->sections[$fieldSection];
-        register_setting( $this->slug_snake_case . '_' . $section['tab'], $this->slug_snake_case . '_' . $fieldName );
-
-        $callback = is_callable($fieldCallback) ? $fieldCallback : [$this, $fieldCallback . '_field'];
-
-        add_settings_field(
-            $this->slug_snake_case . '_' . $fieldName, // As of WP 4.6 this value is used only internally.
-            // Use $args' label_for to populate the id inside the callback.
-            __( $fieldTitle, $this->slug ),
-            $callback,
-            $this->slug_snake_case . '_' . $section['tab'],
-            $this->slug_snake_case . '_' . $fieldSection,
-            $attrs
-        );
-    }
-
-    public function add_submenu_page( $parent_slug, $page_title, $menu_title, $capabilities = 'manage_options' ) {
-        $slug_snake_case = $this->slug_snake_case;
-        $slug = $this->slug;
-        $activeTab = isset( $_GET[ 'tab' ] ) ? sanitize_key($_GET[ 'tab' ]) : array_keys($this->tabs)[0];
-        add_submenu_page(
-            $parent_slug,
-            $page_title,
-            $menu_title,
-            $capabilities,
-            $this->slug,
-            function() use ( $capabilities, $slug_snake_case, $slug, $activeTab ) {
-                // check user capabilities
-                if ( ! current_user_can( $capabilities ) ) {
-                    return;
-                }
-                // show error/update messages
-                settings_errors( $slug_snake_case . '_messages' );
-                ?>
-              <div class="wrap">
-                <div id="icon-themes" class="icon32"></div>
-                <h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
-
-                <h2 class="nav-tab-wrapper">
-                    <?php foreach ($this->tabs as $tab) : ?>
-                    <?php
-                        $link = sprintf('?page=%s&tab=%s', $this->slug, $tab['name']);
-                        if (true === @$tab['inactive']) {
-                            $link = '#';
-                        }
-                        ?>
-                    <a
-                        href="<?php echo esc_url($link); ?>"
-                        class="nav-tab
-                        <?php if ($activeTab === $tab['name']) : ?>
-                            nav-tab-active
-                        <?php endif; ?>
-                    "><?php echo wp_kses($tab['title'], self::WP_KSES_ALLOWED_HTML, self::WP_KSES_ALLOWED_PROTOCOLS); ?></a>
-                    <?php endforeach; ?>
-                </h2>
-                  <?php
-                    if (is_callable($this->tabs[$activeTab]['callback'])) {
-                        call_user_func($this->tabs[$activeTab]['callback']);
-                    } else {
-                        ?>
-                        <form action="options.php" method="post">
-                        <?php
-                        // output security fields for the registered setting "wporg_options"
-                        settings_fields( $slug_snake_case . '_' . $activeTab );
-                        // output setting sections and their fields
-                        // (sections are registered for "wporg", each field is registered to a specific section)
-                        do_settings_sections( $slug_snake_case . '_' . $activeTab );
-                        // output save settings button
-                        if (false !== $this->tabs[$activeTab]['show_save_button']) {
-                            submit_button( __( 'Save Settings', $slug ) );
-                        }
-                        ?>
-                        </form>
-                        <?php
-                    }
-                    ?>
-              </div>
-                <?php
-            }
-        );
-    }
-
-    public function checkbox_field( $args ) {
-        // Get the value of the setting we've registered with register_setting()
-        $value = $args['value'] ?? get_option( $args['label_for'] );
-        ?>
-      <input
-        type="checkbox"
-        id="<?php echo esc_attr( $args['label_for'] ); ?>"
-        name="<?php echo esc_attr( $args['label_for'] ); ?>"
-        <?php if (true === @$args['disabled']) : ?>
-        disabled="disabled"
-        <?php endif; ?>
-        <?php if (@$args['title']) : ?>
-        title="<?php echo esc_attr($args['title']); ?>"
-        <?php endif; ?>
-        value="1"
-        <?php checked( $value, 1 ); ?> />
-      <p class="description">
-        <?php echo wp_kses($args['description'], self::WP_KSES_ALLOWED_HTML, self::WP_KSES_ALLOWED_PROTOCOLS); ?>
-      </p>
-        <?php
-    }
-
-    public function select_field( $args ) {
-        // Get the value of the setting we've registered with register_setting()
-        $selectedValue = $args['value'] ?? get_option( $args['label_for'] );
-        ?>
-      <select
-        type="checkbox"
-        id="<?php echo esc_attr( $args['label_for'] ); ?>"
-        name="<?php echo esc_attr( $args['label_for'] ); ?>"
-        <?php if (true === @$args['disabled']) : ?>
-        disabled="disabled"
-        <?php endif; ?>
-        >
-        <?php foreach ($args['options'] as $value => $label) : ?>
-            <option value="<?php echo esc_attr($value); ?>"
-                <?php if ($selectedValue == $value) : ?>
-                selected
-                <?php endif; ?>
-                ><?php echo esc_html($label); ?></option>
-        <?php endforeach ?>
-        </select>
-      <p class="description">
-        <?php echo wp_kses($args['description'], self::WP_KSES_ALLOWED_HTML, self::WP_KSES_ALLOWED_PROTOCOLS); ?>
-      </p>
-        <?php
-    }
-
-
-    public function textarea_field( $args ) {
-        // Get the value of the setting we've registered with register_setting()
-        $value = $args['value'] ?? get_option( $args['label_for'] );
-        ?>
-      <textarea
-        id="<?php echo esc_attr( $args['label_for'] ); ?>"
-        class="large-text code"
-        rows="<?php echo esc_html( $args['rows'] ); ?>"
-        name="<?php echo esc_attr( $args['label_for'] ); ?>"><?php echo wp_kses($value, self::WP_KSES_ALLOWED_HTML, self::WP_KSES_ALLOWED_PROTOCOLS); ?></textarea>
-      <p class="description">
-        <?php echo esc_html( $args['description'] ); ?>
-      </p>
-        <?php
-    }
-
-    public function input_field( $args ) {
-        // Get the value of the setting we've registered with register_setting()
-        $value = $args['value'] ?? get_option( $args['label_for'] );
-        ?>
-      <input
-        id="<?php echo esc_attr( $args['label_for'] ); ?>"
-        class="large-text code"
-        type="<?php echo esc_html( $args['type'] ); ?>"
-        <?php if (true === @$args['disabled']) : ?>
-        disabled="disabled"
-        <?php endif; ?>
-        value="<?php echo esc_html($value); ?>"
-        placeholder="<?php echo esc_html( @$args['placeholder'] ); ?>"
-        name="<?php echo esc_attr( $args['label_for'] ); ?>" />
-      <p class="description">
-        <?php echo esc_html( $args['description'] ); ?>
-      </p>
-        <?php
-    }
-}
-
-$wp_settings_util = new WP_Settings_Util("simple-profit-woocommerce");
-
-new Advanced_Cogs_Profit_Woo("simple-profit-woocommerce", $wp_settings_util);
-
-add_filter( 'woocommerce_get_sections_advanced', 'rudr_add_setting_section' );
-
-function rudr_add_setting_section( $sections ) {
-
-    $sections[ 'misha' ] = 'COGS & Profit';
-    return $sections;
-
-}
-
-// add_action( 'woocommerce_settings_{tab}', ...
-add_action( 'woocommerce_settings_advanced', 'rudr_section_content' );
-
-function rudr_section_content() {
-    if( empty( $_GET[ 'section' ] ) || 'misha' !== $_GET[ 'section' ] ) {
-        return;
-    }
-    echo 'what is up?';
-}
-
-
+new Advanced_Cogs_Profit_Woo("advanced-cogs-profit-woo");
