@@ -116,33 +116,33 @@ class Advanced_Cogs_Profit_Woo {
                 <?php $sel = fn($nam, $val) => @$rule[$nam] === $val ? 'selected="selected"' : ''; ?>
                 <tr>
                     <td style="vertical-align: middle;padding-left: 10px;">
-                        <select name="product_cogs_rules[<?php echo $index; ?>][parameter]" class="wc-enhanced-select enhanced" tabindex="-1" >
-                            <option value="category" <?php echo $sel('parameter', 'category'); ?>>Category</option>
-                            <option value="tag" <?php echo $sel('parameter', 'tag'); ?>>Tag</option>
-                            <option value="attribute" <?php echo $sel('parameter', 'attribute'); ?>>Attribute</option>
+                        <select name="product_cogs_rules[<?php echo esc_html($index); ?>][parameter]" class="wc-enhanced-select enhanced" tabindex="-1" >
+                            <option value="category" <?php echo esc_html($sel('parameter', 'category')); ?>>Category</option>
+                            <option value="tag" <?php echo esc_html($sel('parameter', 'tag')); ?>>Tag</option>
+                            <option value="attribute" <?php echo esc_html($sel('parameter', 'attribute')); ?>>Attribute</option>
                         </select>
                     </td>
 
                     <td style="vertical-align: middle;padding-left: 10px;">
-                        <select name="product_cogs_rules[<?php echo $index; ?>][operator]" class="wc-enhanced-select enhanced" tabindex="-1" >
-                            <option value="equals" <?php echo $sel('operator', 'equals'); ?>>equals</option>
-                            <option value="not_equals" <?php echo $sel('operator', 'not_equals'); ?>>doesn't equal</option>
-                            <option value="contains" <?php echo $sel('operator', 'contains'); ?>>contains</option>
-                            <option value="not_contains" <?php echo $sel('operator', 'not_contains'); ?>>doesn't contain</option>
+                        <select name="product_cogs_rules[<?php echo esc_html($index); ?>][operator]" class="wc-enhanced-select enhanced" tabindex="-1" >
+                            <option value="equals" <?php echo esc_html($sel('operator', 'equals')); ?>>equals</option>
+                            <option value="not_equals" <?php echo esc_html($sel('operator', 'not_equals')); ?>>doesn't equal</option>
+                            <option value="contains" <?php echo esc_html($sel('operator', 'contains')); ?>>contains</option>
+                            <option value="not_contains" <?php echo esc_html($sel('operator', 'not_contains')); ?>>doesn't contain</option>
                         </select>
                     </td>
 
                     <td>
-                        <input type="text" value="<?php echo @$rule['matching_value']; ?>" placeholder="matching value" name="product_cogs_rules[<?php echo $index; ?>][matching_value]">
+                        <input type="text" value="<?php echo esc_html(@$rule['matching_value']); ?>" placeholder="matching value" name="product_cogs_rules[<?php echo esc_html($index); ?>][matching_value]">
                     </td>
 
                     <td>
-                        <input type="text" value="<?php echo @$rule['cogs_percentage']; ?>" placeholder="%" name="product_cogs_rules[<?php echo $index; ?>][cogs_percentage]">
+                        <input type="text" value="<?php echo esc_html(@$rule['cogs_percentage']); ?>" placeholder="%" name="product_cogs_rules[<?php echo esc_html($index); ?>][cogs_percentage]">
                     </td>
 
                     <td style="vertical-align: middle;padding-left: 10px;">
-                        <input type="hidden" name="product_cogs_rules[<?php echo $index; ?>][enabled]" value="0">
-                        <input type="checkbox" class="checkbox" name="product_cogs_rules[<?php echo $index; ?>][enabled]" value="1" <?php echo @$rule['enabled'] === "1" ? 'checked="checked"' : ''; ?>>
+                        <input type="hidden" name="product_cogs_rules[<?php echo esc_html($index); ?>][enabled]" value="0">
+                        <input type="checkbox" class="checkbox" name="product_cogs_rules[<?php echo esc_html($index); ?>][enabled]" value="1" <?php echo esc_html(@$rule['enabled']) === "1" ? 'checked="checked"' : ''; ?>>
                     </td>
                     <td style="vertical-align: middle;padding-left: 10px;">
                         <a href="#" class="button minus remove_tax_rates advanced-cogs-profit-woo-remove">Remove</a>
@@ -177,11 +177,13 @@ class Advanced_Cogs_Profit_Woo {
     }
 
     public function save_settings() {
-        if ($_REQUEST['section'] !== $this->slug) {
+        if( empty( $_REQUEST[ 'section' ] ) || $this->slug !== $_REQUEST[ 'section' ] ) {
             return;
         }
 
-        update_option( $this->slug_snake_case . '_product_cogs_rules', json_encode($_REQUEST['product_cogs_rules']) );
+        if (!empty($_REQUEST['product_cogs_rules'])) {
+            update_option( $this->slug_snake_case . '_product_cogs_rules', wp_json_encode($_REQUEST['product_cogs_rules']) );
+        }
 
         WC_Admin_Settings::save_fields( $this->settings );
 
@@ -190,8 +192,8 @@ class Advanced_Cogs_Profit_Woo {
 
     public function add_product_data_tab( $product_data_tabs ) {
         $product_data_tabs[$this->slug] = array(
-            'label' => __( 'COGS Rules', $this->slug_snake_case ), // translatable
-            'target' => $this->slug_snake_case, // translatable
+            'label' => __( 'COGS Rules', 'advanced-cogs-profit-woo' ),
+            'target' => $this->slug_snake_case,
         );
         return $product_data_tabs;
     }
@@ -200,49 +202,14 @@ class Advanced_Cogs_Profit_Woo {
         $product = wc_get_product( get_the_ID() );
 
         ?>
-        <div id="<?php echo $this->slug_snake_case ?>" class="panel woocommerce_options_panel hidden">
+        <div id="<?php echo esc_html($this->slug_snake_case) ?>" class="panel woocommerce_options_panel hidden">
 
             <p class="form-field" style="">
-                <label for="_manage_stock">Calculated COGS</label><span class="description"><?php echo $this->get_cost_from_rules(get_the_ID()); ?></span>
+                <label for="_manage_stock">Calculated COGS</label><span class="description"><?php echo esc_html($this->get_cost_from_rules(get_the_ID())); ?></span>
             </p>
-            <?php /*<p class="form-field" style="">
-                <label for="_manage_stock">Calculated COGS</label><span class="description"><?php echo $this->get_cost_from_rules(get_the_ID()); ?></span>
-            </p>*/ ?>
         </div>
         <?php
     }
-
-
-    public function render_reports_page() {
-        $start_date = isset($_GET['start_date']) ? sanitize_text_field($_GET['start_date']) : date('Y-m-d', strtotime('-30 days'));
-        $end_date = isset($_GET['end_date']) ? sanitize_text_field($_GET['end_date']) : date('Y-m-d');
-
-        $profit_data = $this->calculate_profit_for_period($start_date, $end_date);
-        ?>
-        <div class="profit-reports">
-            <form method="get">
-                <input type="hidden" name="page" value="simple-profit-woocommerce">
-                <input type="date" name="start_date" value="<?php echo esc_attr($start_date); ?>">
-                <input type="date" name="end_date" value="<?php echo esc_attr($end_date); ?>">
-                <input type="submit" class="button" value="Filter">
-            </form>
-
-            <div class="profit-summary">
-                <h3>Profit Summary</h3>
-                <p>Total Revenue: <?php echo wc_price($profit_data['revenue']); ?></p>
-                <p>Total Costs: <?php echo wc_price($profit_data['total_costs']); ?></p>
-                <p>Costs of products: <?php echo wc_price($profit_data['costs_product']); ?></p>
-                <p>Costs of fulfilment: <?php echo wc_price($profit_data['costs_fulfilment']); ?></p>
-                <p>Costs of discounts: <?php echo wc_price($profit_data['costs_discounts']); ?></p>
-                <p>Costs of shipping: <?php echo wc_price($profit_data['costs_shipping']); ?></p>
-                <p>Costs of payment processing: <?php echo wc_price($profit_data['costs_payment_processing']); ?></p>
-                <p>Total Profit: <?php echo wc_price($profit_data['profit']); ?></p>
-                <p>Average Profit per Order: <?php echo wc_price($profit_data['avg_profit']); ?></p>
-            </div>
-        </div>
-        <?php
-    }
-
 
     public function add_order_meta_box() {
         add_meta_box(
@@ -262,16 +229,16 @@ class Advanced_Cogs_Profit_Woo {
         ?>
 
             <h4 style="margin-bottom: .1em;">Total revenue<span class="woocommerce-help-tip" aria-label="This is the Customer Lifetime Value, or the total amount you have earned from this customer's orders."></span></h4>
-            <span><?php echo wc_price($profit_data['revenue']); ?></span>
+            <span><?php echo esc_html(wc_price($profit_data['revenue'])); ?></span>
 
             <h4 style="margin-bottom: .1em;">Total costs<span class="woocommerce-help-tip" aria-label="This is the Customer Lifetime Value, or the total amount you have earned from this customer's orders."></span></h4>
-            <span><?php echo wc_price($profit_data['costs']); ?></span>
+            <span><?php echo esc_html(wc_price($profit_data['costs'])); ?></span>
 
             <h4 style="margin-bottom: .1em;">Net profit<span class="woocommerce-help-tip" aria-label="This is the Customer Lifetime Value, or the total amount you have earned from this customer's orders."></span></h4>
-            <span><?php echo wc_price($profit_data['profit']); ?></span>
+            <span><?php echo esc_html(wc_price($profit_data['profit'])); ?></span>
 
             <h4 style="margin-bottom: .1em;">Profit margin<span class="woocommerce-help-tip" aria-label="This is the Customer Lifetime Value, or the total amount you have earned from this customer's orders."></span></h4>
-            <span><?php echo number_format($profit_data['margin'], 2); ?>%</span>
+            <span><?php echo esc_html(number_format($profit_data['margin'], 2)); ?>%</span>
 
 
             <hr />
@@ -279,16 +246,16 @@ class Advanced_Cogs_Profit_Woo {
 
 
             <h4 style="margin-bottom: .1em;">Products COGS:</h4>
-            <span><?php echo wc_price($profit_data['costs_product']); ?></span>
+            <span><?php echo esc_html(wc_price($profit_data['costs_product'])); ?></span>
 
             <h4 style="margin-bottom: .1em;">Fulfilment costs:</h4>
-            <span><?php echo wc_price($profit_data['costs_fulfilment']); ?></span>
+            <span><?php echo esc_html(wc_price($profit_data['costs_fulfilment'])); ?></span>
 
             <h4 style="margin-bottom: .1em;">Payment processing costs:</h4>
-            <span><?php echo wc_price($profit_data['costs_payment_processing']); ?></span>
+            <span><?php echo esc_html(wc_price($profit_data['costs_payment_processing'])); ?></span>
 
             <h4 style="margin-bottom: .1em;">Shipping costs:</h4>
-            <span><?php echo wc_price($profit_data['costs_shipping']); ?></span>
+            <span><?php echo esc_html(wc_price($profit_data['costs_shipping'])); ?></span>
         <?php
     }
 
