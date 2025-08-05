@@ -1,4 +1,4 @@
-=== Advanced COGS Profit Woo ===
+=== Advanced COGS & Profit for WooCommerce ===
 Contributors: tagconcierge
 Tags: analytics, woocommerce, cogs
 Requires at least: 5.1.0
@@ -23,7 +23,7 @@ Start using COGS information to get real-time profit metrics and insight into pr
 
 == Installation ==
 
-1. Upload or install Advanced COGS Profit Woo plugin from WordPress plugins directory.
+1. Upload or install Advanced COGS & Profit for WooCommerce plugin from WordPress plugins directory.
 2. Activate the plugin through the `Plugins` menu in WordPress.
 3. Go to WooCommerce settings, choose Advanced tab and then COGS & Profit
 

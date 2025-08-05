@@ -1,0 +1,37 @@
+{
+    "name": "tagpilot/advanced-cogs-profit-woo",
+    "description": "Advanced COGS & Profit for WooCommerce",
+    "type": "wordpress-plugin",
+    "require-dev": {
+      "dealerdirect/phpcodesniffer-composer-installer": "^1",
+      "johnpbloch/wordpress-core": "*",
+      "roave/security-advisories": "dev-latest",
+      "woocommerce/woocommerce-sniffs": "1.0.0",
+      "wp-coding-standards/wpcs": "^3",
+      "wpackagist-plugin/woocommerce": "*"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "composer/installers": true
+        },
+      "sort-packages": true
+    },
+    "repositories": [
+        {
+            "type":"composer",
+            "url":"https://wpackagist.org"
+        }
+    ],
+    "scripts": {
+        "fix": "phpcbf --warning-severity=0 -s --ignore-annotations --extensions=php,html --ignore=*/vendor/* advanced-cogs-profit-woo.php",
+        "check": "phpcs --warning-severity=0 -s --ignore-annotations --extensions=php,html --ignore=*/vendor/* advanced-cogs-profit-woo.php"
+    },
+    "extra": {
+      "installer-paths": {
+        "vendor/{$vendor}/{$name}": ["type:wordpress-plugin"]
+      }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
