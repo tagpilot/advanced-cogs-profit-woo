@@ -60,10 +60,33 @@ class Advanced_Cogs_Profit_Woo {
 
         // Add order meta box
         add_action('add_meta_boxes', [$this, 'add_order_meta_box']);
+        
+        // Enqueue admin scripts
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_scripts']);
     }
 
 
 
+    public function enqueue_admin_scripts($hook) {
+        // Only enqueue on WooCommerce settings page
+        if ($hook !== 'woocommerce_page_wc-settings') {
+            return;
+        }
+        
+        // Only enqueue on our custom section
+        if (empty($_GET['section']) || $this->slug !== $_GET['section']) {
+            return;
+        }
+        
+        wp_enqueue_script(
+            $this->slug . '-admin',
+            plugin_dir_url(__FILE__) . 'assets/js/admin.js',
+            array('jquery'),
+            '1.0.0',
+            true
+        );
+    }
+    
     public function add_section_tag( $sections ) {
         $sections[ $this->slug ] = 'COGS & Profit';
         return $sections;
@@ -151,27 +174,6 @@ class Advanced_Cogs_Profit_Woo {
                 <?php endforeach; ?>
             </tbody>
         </table>
-        <script>
-            jQuery(function($) {
-                $("#advanced-cogs-profit-woo-insert").click(function(ev) {
-                    ev.preventDefault();
-                    var table = this.parentNode.parentNode.parentNode.parentNode;
-                    $('tbody tr:last-child', table).clone().appendTo($('tbody', table));
-                    $('tbody tr:last-child :input', table).not(':button, :submit, :reset, :hidden')
-                        .val('').prop('checked', false).prop('selected', false)
-                        .each(function(i, inp) {
-                            var name = inp.name;
-                            var match = name.match(/\[(\d*)\]/i);
-                            $(inp).attr('name', name.replace(match[0], '[' + (parseInt(match[1]) + 1) + ']'))
-                        });
-                });
-
-                $("#advanced-cogs-profit-woo-table").on( "click", ".advanced-cogs-profit-woo-remove", function(ev) {
-                    ev.preventDefault();
-                    this.parentNode.parentNode.remove();
-                });
-            });
-        </script>
         <br class="clear">
         <?php
     }
@@ -182,7 +184,18 @@ class Advanced_Cogs_Profit_Woo {
         }
 
         if (!empty($_REQUEST['product_cogs_rules'])) {
-            update_option( $this->slug_snake_case . '_product_cogs_rules', wp_json_encode($_REQUEST['product_cogs_rules']) );
+            // Sanitize the rules array
+            $sanitized_rules = array();
+            foreach ($_REQUEST['product_cogs_rules'] as $index => $rule) {
+                $sanitized_rules[$index] = array(
+                    'parameter' => sanitize_text_field($rule['parameter'] ?? ''),
+                    'operator' => sanitize_text_field($rule['operator'] ?? ''),
+                    'matching_value' => sanitize_text_field($rule['matching_value'] ?? ''),
+                    'cogs_percentage' => sanitize_text_field($rule['cogs_percentage'] ?? ''),
+                    'enabled' => sanitize_text_field($rule['enabled'] ?? '0')
+                );
+            }
+            update_option( $this->slug_snake_case . '_product_cogs_rules', wp_json_encode($sanitized_rules) );
         }
 
         WC_Admin_Settings::save_fields( $this->settings );
@@ -192,7 +205,7 @@ class Advanced_Cogs_Profit_Woo {
 
     public function add_product_data_tab( $product_data_tabs ) {
         $product_data_tabs[$this->slug] = array(
-            'label' => __( 'COGS Rules', 'advanced-cogs-profit-woo' ),
+            'label' => __( 'COGS Rules', 'advanced-cogs-profit-for-woocommerce' ),
             'target' => $this->slug_snake_case,
         );
         return $product_data_tabs;
