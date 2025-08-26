@@ -63,6 +63,27 @@ class Advanced_Cogs_Profit_Woo {
 
 		// Add order meta box
 		add_action('add_meta_boxes', [$this, 'add_order_meta_box']);
+		
+		// Enqueue admin scripts
+		add_action( 'admin_enqueue_scripts', [$this, 'enqueue_admin_scripts'] );
+	}
+
+	public function enqueue_admin_scripts( $hook ) {
+		// Only load on WooCommerce settings page
+		if ( 'woocommerce_page_wc-settings' !== $hook ) {
+			return;
+		}
+
+		// Only load on our specific section
+		if ( isset( $_GET['section'] ) && $this->slug === sanitize_text_field( $_GET['section'] ) ) {
+			wp_enqueue_script(
+				'advanced-cogs-admin-settings',
+				plugin_dir_url( __FILE__ ) . 'assets/js/admin-settings.js',
+				array( 'jquery' ),
+				'1.0.0',
+				true
+			);
+		}
 	}
 
 
@@ -85,7 +106,7 @@ class Advanced_Cogs_Profit_Woo {
 
 
 	public function add_section_content() {
-		if ( empty( $_GET[ 'section' ] ) || $this->slug !== $_GET[ 'section' ] ) {
+		if ( empty( $_GET[ 'section' ] ) || $this->slug !== sanitize_text_field( $_GET[ 'section' ] ) ) {
 			return;
 		}
 		$cogs_rules_raw = get_option( $this->slug_snake_case . '_product_cogs_rules');
@@ -156,48 +177,67 @@ class Advanced_Cogs_Profit_Woo {
 				<?php endforeach; ?>
 			</tbody>
 		</table>
-		<script>
-			jQuery(function($) {
-				$("#advanced-cogs-profit-woo-insert").click(function(ev) {
-					ev.preventDefault();
-					var table = this.parentNode.parentNode.parentNode.parentNode;
-					$('tbody tr:last-child', table).clone().appendTo($('tbody', table));
-					$('tbody tr:last-child :input', table).not(':button, :submit, :reset, :hidden')
-						.val('').prop('checked', false).prop('selected', false)
-						.each(function(i, inp) {
-							var name = inp.name;
-							var match = name.match(/\[(\d*)\]/i);
-							$(inp).attr('name', name.replace(match[0], '[' + (parseInt(match[1]) + 1) + ']'))
-						});
-				});
-
-				$("#advanced-cogs-profit-woo-table").on( "click", ".advanced-cogs-profit-woo-remove", function(ev) {
-					ev.preventDefault();
-					this.parentNode.parentNode.remove();
-				});
-			});
-		</script>
 		<br class="clear">
 		<?php
 	}
 
 	public function save_settings() {
-		if ( empty( $_REQUEST[ 'section' ] ) || $this->slug !== $_REQUEST[ 'section' ] ) {
+		if ( empty( $_REQUEST[ 'section' ] ) || $this->slug !== sanitize_text_field( $_REQUEST[ 'section' ] ) ) {
 			return;
 		}
 
 		if (!empty($_REQUEST['product_cogs_rules'])) {
-			update_option( $this->slug_snake_case . '_product_cogs_rules', wp_json_encode(filter_var($_REQUEST['product_cogs_rules'], FILTER_FLAG_STRIP_BACKTICK)) );
+			$sanitized_rules = $this->sanitize_cogs_rules( $_REQUEST['product_cogs_rules'] );
+			update_option( $this->slug_snake_case . '_product_cogs_rules', wp_json_encode( $sanitized_rules ) );
 		}
 
 		WC_Admin_Settings::save_fields( $this->settings );
 
 	}
 
+	private function sanitize_cogs_rules( $rules ) {
+		if ( ! is_array( $rules ) ) {
+			return array();
+		}
+
+		$sanitized = array();
+		foreach ( $rules as $key => $rule ) {
+			if ( ! is_array( $rule ) ) {
+				continue;
+			}
+
+			$sanitized_rule = array();
+			
+			// Sanitize type field
+			if ( isset( $rule['type'] ) ) {
+				$sanitized_rule['type'] = sanitize_text_field( $rule['type'] );
+			}
+			
+			// Sanitize value field
+			if ( isset( $rule['value'] ) ) {
+				$sanitized_rule['value'] = sanitize_text_field( $rule['value'] );
+			}
+			
+			// Sanitize cogs field (numeric value)
+			if ( isset( $rule['cogs'] ) ) {
+				$sanitized_rule['cogs'] = sanitize_text_field( $rule['cogs'] );
+			}
+			
+			// Sanitize enabled checkbox
+			if ( isset( $rule['enabled'] ) ) {
+				$sanitized_rule['enabled'] = absint( $rule['enabled'] );
+			}
+
+			$sanitized[ absint( $key ) ] = $sanitized_rule;
+		}
+
+		return $sanitized;
+	}
+
 
 	public function add_product_data_tab( $product_data_tabs ) {
 		$product_data_tabs[$this->slug] = array(
-			'label' => __( 'COGS Rules', 'advanced-cogs-profit-woo' ),
+			'label' => __( 'COGS Rules', 'advanced-cogs-profit-for-woocommerce' ),
 			'target' => $this->slug_snake_case,
 		);
 		return $product_data_tabs;
@@ -413,4 +453,4 @@ return;
 	}
 }
 
-new Advanced_Cogs_Profit_Woo('advanced-cogs-profit-woo');
+new Advanced_Cogs_Profit_Woo('advanced-cogs-profit-for-woocommerce');
