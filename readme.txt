@@ -1,7 +1,7 @@
 === Advanced COGS & Profit for WooCommerce ===
 Contributors: tagconcierge
 Tags: analytics, woocommerce, cogs
-Requires at least: 5.1.0
+Requires at least: 5.1
 Tested up to: 6.8
 Requires PHP: 7.0
 Stable tag: 1.0.0
