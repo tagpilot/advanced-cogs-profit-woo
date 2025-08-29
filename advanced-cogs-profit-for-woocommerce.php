@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Advanced COGS & Profit for WooCommerce
  * Description: Adds profit calculation capabilities to WooCommerce
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Tag Pilot
  * Requires at least: 5.8
  * Requires PHP: 7.4
