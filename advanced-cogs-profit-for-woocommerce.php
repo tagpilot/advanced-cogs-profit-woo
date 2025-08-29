@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Advanced COGS & Profit for WooCommerce
  * Description: Adds profit calculation capabilities to WooCommerce
- * Version: 1.0.1
+ * Version: 1.1.0
  * Author: Tag Pilot
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -118,6 +118,7 @@ class Advanced_Cogs_Profit_Woo {
 		?>
 		<h2>COGS rules</h2>
 		<div id="advanced_page_options-description"><p>Define COGS rules that will apply to products based on condition.</p></div>
+		<div class="notice notice-info inline"><p><strong>Note:</strong> When using the 'Attribute' taxonomy, the matching value must be in the format <code>attribute_name:attribute_value</code> (e.g., <code>color:blue</code>). All matching is case-sensitive.</p></div>
 		<table id="advanced-cogs-profit-woo-table" class="wc_input_table widefat">
 			<thead>
 				<tr>
@@ -207,23 +208,23 @@ class Advanced_Cogs_Profit_Woo {
 			}
 
 			$sanitized_rule = array();
-			
-			// Sanitize type field
-			if ( isset( $rule['type'] ) ) {
-				$sanitized_rule['type'] = sanitize_text_field( $rule['type'] );
+
+			if ( isset( $rule['parameter'] ) ) {
+				$sanitized_rule['parameter'] = sanitize_text_field( $rule['parameter'] );
 			}
-			
-			// Sanitize value field
-			if ( isset( $rule['value'] ) ) {
-				$sanitized_rule['value'] = sanitize_text_field( $rule['value'] );
+
+			if ( isset( $rule['operator'] ) ) {
+				$sanitized_rule['operator'] = sanitize_text_field( $rule['operator'] );
 			}
-			
-			// Sanitize cogs field (numeric value)
-			if ( isset( $rule['cogs'] ) ) {
-				$sanitized_rule['cogs'] = sanitize_text_field( $rule['cogs'] );
+
+			if ( isset( $rule['matching_value'] ) ) {
+				$sanitized_rule['matching_value'] = sanitize_text_field( $rule['matching_value'] );
 			}
-			
-			// Sanitize enabled checkbox
+
+			if ( isset( $rule['cogs_percentage'] ) ) {
+				$sanitized_rule['cogs_percentage'] = sanitize_text_field( $rule['cogs_percentage'] );
+			}
+
 			if ( isset( $rule['enabled'] ) ) {
 				$sanitized_rule['enabled'] = absint( $rule['enabled'] );
 			}
@@ -249,7 +250,7 @@ class Advanced_Cogs_Profit_Woo {
 		?>
 		<div id="<?php echo esc_html($this->slug_snake_case); ?>" class="panel woocommerce_options_panel hidden">
 
-			<p class="form-field" style="">
+			<p class="form-field">
 				<label for="_manage_stock">Calculated COGS</label><span class="description"><?php echo esc_html($this->get_cost_from_rules(get_the_ID())); ?></span>
 			</p>
 		</div>
@@ -257,32 +258,45 @@ class Advanced_Cogs_Profit_Woo {
 	}
 
 	public function add_order_meta_box() {
+		$screen = 'shop_order';
+
+		if ( class_exists( '\Automattic\WooCommerce\Utilities\OrderUtil' ) ) {
+			if ( \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+				$screen = wc_get_page_screen_id( 'shop-order' );
+			}
+		}
+
 		add_meta_box(
 			$this->slug_snake_case . '_order_details',
 			'COGS & Profit Details',
 			[$this, 'render_order_meta_box'],
-			'shop_order',
+			$screen,
 			'side'
 		);
 	}
 
-	public function render_order_meta_box( $post) {
-		$order = wc_get_order($post->ID);
-		if (!$order) {
-return;
+	public function render_order_meta_box( $post_or_order_object ) {
+		if ( $post_or_order_object instanceof \WP_Post ) {
+			$order = wc_get_order( $post_or_order_object->ID );
+		} else {
+			$order = $post_or_order_object;
+		}
+
+		if ( ! $order ) {
+			return;
 		}
 
 		$profit_data = $this->calculate_order_profit($order);
 		?>
 
 			<h4 style="margin-bottom: .1em;">Total revenue<span class="woocommerce-help-tip" aria-label="This is the Customer Lifetime Value, or the total amount you have earned from this customer's orders."></span></h4>
-			<span><?php echo esc_html(wc_price($profit_data['revenue'])); ?></span>
+			<span><?php echo wc_price($profit_data['revenue']); ?></span>
 
 			<h4 style="margin-bottom: .1em;">Total costs<span class="woocommerce-help-tip" aria-label="This is the Customer Lifetime Value, or the total amount you have earned from this customer's orders."></span></h4>
-			<span><?php echo esc_html(wc_price($profit_data['costs'])); ?></span>
+			<span><?php echo wc_price($profit_data['costs']); ?></span>
 
 			<h4 style="margin-bottom: .1em;">Net profit<span class="woocommerce-help-tip" aria-label="This is the Customer Lifetime Value, or the total amount you have earned from this customer's orders."></span></h4>
-			<span><?php echo esc_html(wc_price($profit_data['profit'])); ?></span>
+			<span><?php echo wc_price($profit_data['profit']); ?></span>
 
 			<h4 style="margin-bottom: .1em;">Profit margin<span class="woocommerce-help-tip" aria-label="This is the Customer Lifetime Value, or the total amount you have earned from this customer's orders."></span></h4>
 			<span><?php echo esc_html(number_format($profit_data['margin'], 2)); ?>%</span>
@@ -293,22 +307,22 @@ return;
 
 
 			<h4 style="margin-bottom: .1em;">Products COGS:</h4>
-			<span><?php echo esc_html(wc_price($profit_data['costs_product'])); ?></span>
+			<span><?php echo wc_price($profit_data['costs_product']); ?></span>
 
 			<h4 style="margin-bottom: .1em;">Fulfilment costs:</h4>
-			<span><?php echo esc_html(wc_price($profit_data['costs_fulfilment'])); ?></span>
+			<span><?php echo wc_price($profit_data['costs_fulfilment']); ?></span>
 
 			<h4 style="margin-bottom: .1em;">Payment processing costs:</h4>
-			<span><?php echo esc_html(wc_price($profit_data['costs_payment_processing'])); ?></span>
+			<span><?php echo wc_price($profit_data['costs_payment_processing']); ?></span>
 
 			<h4 style="margin-bottom: .1em;">Shipping costs:</h4>
-			<span><?php echo esc_html(wc_price($profit_data['costs_shipping'])); ?></span>
+			<span><?php echo wc_price($profit_data['costs_shipping']); ?></span>
 		<?php
 	}
 
 	private function calculate_order_profit( $order) {
 		$revenue = $order->get_total();
-		$shipping = $order->get_total_shipping();
+		$costs_shipping = $order->get_total_shipping();
 		$costs_discounts = $order->get_total_discount();
 		$costs_product = 0;
 
@@ -327,7 +341,7 @@ return;
 
 		// Add fulfilment costs
 		$fulfilment_costs = $this->calculate_fulfilment_costs($order);
-		$costs = (float) $shipping + (float) $costs_product + (float) $fulfilment_costs;
+		$costs = (float) $costs_shipping + (float) $costs_product + (float) $fulfilment_costs;
 
 		// Add payment processing costs
 		$payment_costs = $this->calculate_payment_processing_costs($order);
@@ -365,6 +379,7 @@ return;
 		$costs_fulfilment = 0;
 		$costs_payment_processing = 0;
 		$costs_discounts = 0;
+		$costs_shipping = 0;
 		$order_count = count($orders);
 
 		foreach ($orders as $order) {
@@ -403,29 +418,83 @@ return;
 		return $option_value;
 	}
 
+	private function evaluate_rule_match( $operator, $rule_value, $product_values) {
+		switch ($operator) {
+			case 'equals':
+				return in_array($rule_value, $product_values, true);
+			case 'not_equals':
+				return ! in_array($rule_value, $product_values, true);
+			case 'contains':
+				foreach ($product_values as $product_value) {
+					if (false !== strpos($product_value, $rule_value)) {
+						return true;
+					}
+				}
+				return false;
+			case 'not_contains':
+				foreach ($product_values as $product_value) {
+					if (false !== strpos($product_value, $rule_value)) {
+						return false;
+					}
+				}
+				return true;
+		}
+		return false;
+	}
+
 	private function get_cost_from_rules( $product_id) {
 		$product_cogs_rules = json_decode($this->get_cached_option('product_cogs_rules'), true);
 		$product = wc_get_product($product_id);
 
-		if ($product->get_cogs_total_value() != 0) {
+		if (method_exists($product, 'get_cogs_total_value') && $product->get_cogs_total_value() != 0) {
 			return $product->get_cogs_total_value();
 		}
 
-		$categories = array_map(fn( $t) => $t->name, get_the_terms( $product_id, 'product_cat' ));
-
 		$cost = 0;
+		if (empty($product_cogs_rules) || ! is_array($product_cogs_rules)) {
+			return $cost;
+		}
+
 		foreach ($product_cogs_rules as $rule) {
-			if ('1' !== $rule['enabled']) {
+			if (empty($rule['enabled']) || 1 !== (int)$rule['enabled']) {
 				continue;
 			}
 
-			if ('category' === $rule['parameter']) {
+			$match = false;
+			switch ($rule['parameter']) {
+				case 'category':
+					$terms = get_the_terms($product_id, 'product_cat');
 
-				if ('equals' === $rule['operator']) {
-
-					if (in_array($rule['matching_value'], $categories)) {
-						$cost = $product->get_price_excluding_tax() * $rule['cogs_percentage'] / 100;
+					if (is_array($terms)) {
+						$names = array_map(fn($term) => $term->name, $terms);
+						$match = $this->evaluate_rule_match($rule['operator'], $rule['matching_value'], $names);
 					}
+					break;
+				case 'tag':
+					$terms = get_the_terms($product_id, 'product_tag');
+					if (is_array($terms)) {
+						$names = array_map(fn($term) => $term->name, $terms);
+						$match = $this->evaluate_rule_match($rule['operator'], $rule['matching_value'], $names);
+					}
+					break;
+				case 'attribute':
+					list($attr_name, $attr_value) = array_pad(explode(':', $rule['matching_value'], 2), 2, null);
+
+					if ( ! $attr_name || ! $attr_value) {
+						break;
+					}
+					$product_attr_value = $product->get_attribute($attr_name);
+					if ($product_attr_value) {
+						$product_attr_values = array_map('trim', explode(',', $product_attr_value));
+						$match               = $this->evaluate_rule_match($rule['operator'], $attr_value, $product_attr_values);
+					}
+					break;
+			}
+
+			if ($match) {
+				$price = $product->get_price_excluding_tax();
+				if (is_numeric($price) && is_numeric($rule['cogs_percentage'])) {
+					$cost = $price * $rule['cogs_percentage'] / 100;
 				}
 			}
 		}
