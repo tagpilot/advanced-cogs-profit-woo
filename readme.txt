@@ -8,13 +8,13 @@ Stable tag: 1.0.1
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
-Unlock powerful profit insights for your WooCommerce store. This plugin extends WooCommerce's native Cost of Goods Sold (COGS) functionality, allowing you to create dynamic COGS rules and track your true profitability in real-time.
+Unlock profit insights for your WooCommerce store. This plugin extends WooCommerce's native Cost of Goods Sold (COGS) functionality, allowing you to create dynamic COGS rules and apply other order processing costs to track your true profitability in real-time.
 
 == Description ==
 
-Advanced COGS & Profit for WooCommerce gives you the tools to move beyond basic revenue tracking and understand your store's financial health with precision. Instead of manually setting a cost for each product, you can now apply costs in bulk using a flexible rules engine based on product categories, tags, or attributes.
+Advanced COGS & Profit for WooCommerce gives you the tools to move beyond basic revenue tracking and understand your store's financial health. Instead of manually setting a cost for each product, you can now apply costs in bulk using a flexible rules engine based on product categories, tags, or attributes.
 
-The plugin also allows you to account for order-level expenses like payment processing and fulfillment fees, giving you a complete picture of your costs. All this information is neatly summarized on each order page, showing you the total revenue, costs, net profit, and profit margin for every sale.
+The plugin also allows you to account for order-level expenses like payment processing and fulfillment fees, giving you a complete picture of your costs. All this information is summarized on each order page, showing you the total revenue, costs, net profit, and profit margin for every sale.
 
 ## Features
 
